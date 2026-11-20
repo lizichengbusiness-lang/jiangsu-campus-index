@@ -3,13 +3,15 @@
 
   const { schools, sources } = window.directoryData;
   const byId = new Map(schools.map(school => [school.id, school]));
-  const cities = [...new Set(schools.map(school => school.city))];
+  const provinces = [...new Set(schools.map(school => school.province))];
+  const byProvince = new Map(provinces.map(province =>
+    [province, schools.filter(school => school.province === province)]));
   const number = new Intl.NumberFormat("zh-CN");
   const names = new Intl.Collator("zh-Hans-CN-u-co-pinyin");
   const storageKey = "jiangsu-campus-saved-v1";
   const pageSize = 12;
   const $ = id => document.getElementById(id);
-  const filters = ["search", "city", "level", "nature", "admission", "price", "sort"];
+  const filters = ["search", "province", "city", "level", "nature", "admission", "price", "sort"];
   const admissionsLabels = {
     art: "艺术类",
     sport: "体育类（统考）",
@@ -23,8 +25,6 @@
     ? number.format(min)
     : `${number.format(min)}–${number.format(max)}`;
   const sourceLink = (href, label) => `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
-  const tuitionSearchUrl = school => "https://www.baidu.com/s?wd=" +
-    encodeURIComponent(`"${school.name}" 2026 招生章程 学费 收费标准`);
   const normalized = text => String(text).normalize("NFKC").toLowerCase();
   const statusText = school => school.level === "专科" ? `${school.nature === "中外合作办学" ? "中外合作" : school.nature}大专`
     : school.nature === "民办" ? "民办本科" : school.nature === "公办" ? "公办本科" : "中外合作本科";
@@ -66,7 +66,6 @@
 
   function matchPrice(school, price) {
     if (!price) return true;
-    if (price === "unknown") return !school.tuition;
     if (price === "known") return Boolean(school.tuition);
     const ranges = { low: [0, 9999], mid: [10000, 19999], high: [20000, 29999], premium: [30000, Infinity] };
     const [lower, upper] = ranges[price];
@@ -95,6 +94,7 @@
 
   function getResults() {
     const query = normalized($("search").value).trim().split(/\s+/).filter(Boolean);
+    const province = $("province").value;
     const city = $("city").value;
     const level = $("level").value;
     const nature = $("nature").value;
@@ -103,7 +103,7 @@
     const sort = $("sort").value;
     const matched = schools.filter(school => {
       const kinds = admissionKinds(school);
-      const searchText = normalized([school.name, school.id, school.city, statusText(school), ...school.aliases,
+      const searchText = normalized([school.name, school.id, school.province, school.city, statusText(school), ...school.aliases,
         ...school.flags, school.batches["1"] ? "历史一本" : "",
         school.batches["2"] ? (school.nature === "民办" ? "历史二本 民办二本" : "历史二本") : "",
         ...kinds.map(kind => admissionsLabels[kind]),
@@ -113,14 +113,12 @@
         ...(school.tuition?.majors ?? [])].join(" "));
       return (view === "all" || saved.has(school.id))
         && matchesPreset(school)
+        && (!province || province === school.province)
         && (!city || city === school.city) && (!level || level === school.level) && (!nature || nature === school.nature)
         && matchesAdmission(school, admission) && matchPrice(school, price)
         && query.every(term => searchText.includes(term));
     });
     if (sort === "name") return matched.sort((a, b) => names.compare(a.name, b.name));
-    if (sort === "fee-unknown") {
-      return matched.sort((a, b) => Number(Boolean(a.tuition)) - Number(Boolean(b.tuition)));
-    }
     if (sort === "fee-up" || sort === "fee-down") {
       const direction = sort === "fee-up" ? 1 : -1;
       return matched.sort((a, b) => {
@@ -147,8 +145,7 @@
 
   function renderFee(school) {
     const fee = school.tuition;
-    if (!fee) return `<span class="unknown">待查询</span>
-      <span class="fee-search">${sourceLink(tuitionSearchUrl(school), "查学费")}</span>`;
+    if (!fee) return '<span class="unknown">暂无信息</span>';
     const bounds = feeBounds(school);
     if (!bounds) return `<span class="unknown">仅有专项收费</span><span class="fee-note">${fee.year} 年</span>`;
     if (fee.average) {
@@ -166,10 +163,11 @@
     const action = isSaved ? "取消收藏" : "收藏";
     const name = esc(school.name);
     const admissions = renderAdmissionTags(school);
+    const location = esc([school.province, school.city].filter(Boolean).join(" · "));
     return `<tr>
       <td><button class="school-name" data-school="${school.id}">${name}</button>
-      <span class="school-code"><span class="mobile-city">${esc(school.city)} · </span>${school.id}</span></td>
-      <td class="school-city">${esc(school.city)}</td>
+      <span class="school-code"><span class="mobile-city">${location} · </span>${school.id}</span></td>
+      <td class="school-city">${location}</td>
       <td><div class="tags">${tags(school)}</div>${admissions ? `<div class="tags mobile-admissions">${admissions}</div>` : ""}</td>
       <td class="admissions-cell">${admissions ? `<div class="tags">${admissions}</div>` : '<span class="unknown">—</span>'}</td>
       <td>${renderFee(school)}</td>
@@ -211,17 +209,16 @@
       ? '<strong>还没有收藏的院校</strong><p>在院校列表点星标，之后就能在这里查看。</p><button class="button secondary" data-view="all">浏览院校</button>'
       : '<strong>没有符合条件的院校</strong><p>试试缩短搜索词，或放宽城市、类型和学费条件。</p><button class="button secondary" data-clear>清除筛选</button>';
     $("export").disabled = !results.length;
-    $("fee-queue").setAttribute("aria-pressed", $("price").value === "unknown");
     $("saved-badge").textContent = saved.size;
     $("results-title").textContent = view === "saved" ? "我的收藏" : "院校检索";
-    $("results-subtitle").textContent = view === "saved" ? "收藏保存在当前浏览器，可导出筛选后的名单。" : "筛选江苏普通高校与已收录的公开招生数据。";
+    $("results-subtitle").textContent = view === "saved" ? "收藏保存在当前浏览器，可导出筛选后的名单。" : "筛选五省普通高校与已收录的公开招生数据。";
     document.querySelectorAll(".nav-link").forEach(button => {
       const selected = view === button.dataset.view;
       button.classList.toggle("current", selected);
       button.setAttribute("aria-pressed", selected);
     });
     document.querySelectorAll("[data-preset]").forEach(button => button.setAttribute("aria-pressed", preset === button.dataset.preset));
-    document.querySelectorAll("[data-city]").forEach(button => button.setAttribute("aria-pressed", $("city").value === button.dataset.city));
+    document.querySelectorAll("[data-province]").forEach(button => button.setAttribute("aria-pressed", $("province").value === button.dataset.province));
     renderPagination(pageCount);
   }
 
@@ -229,6 +226,17 @@
     for (const id of filters) $(id).value = id === "sort" ? "official" : "";
     preset = "all";
     page = 1;
+    updateCityOptions();
+  }
+
+  function updateCityOptions() {
+    const province = $("province").value;
+    const cities = [...new Set((byProvince.get(province) ?? schools).map(school => school.city).filter(Boolean))];
+    cities.sort(names.compare);
+    const city = $("city");
+    const selected = city.value;
+    city.replaceChildren(new Option("全部城市", ""), ...cities.map(name => new Option(name, name)));
+    if (cities.includes(selected)) city.value = selected;
   }
 
   function applyFilter() {
@@ -255,11 +263,11 @@
     const feeRows = tuition?.fees.map(fee => `<div class="detail-fee"><span>${esc(fee.label)}${fee.special ? " · 专项" : ""}</span><strong>${formatRange(fee.min, fee.max)} 元/年</strong></div>`).join("");
     const admissions = (school.admissions ?? []).map(record =>
       `<li><strong>${esc(record.label)}</strong>${record.items.length ? ` · ${record.items.map(esc).join("、")}` : ""} · ${sourceLink(record.url, "查看来源")}</li>`).join("");
-    openDialog(school.city, school.name, `
+    openDialog([school.province, school.city].filter(Boolean).join(" · "), school.name, `
       <div class="tags">${tags(school)}</div>
       <section class="detail-section"><h3>院校信息</h3>
         <p>学校标识码 ${school.id} · 主管部门 ${esc(school.agency)}</p>
-        <div class="detail-links">${school.site ? sourceLink(school.site, "学校官网") : ""}${sourceLink(sources.province, "江苏省教育厅院校名录")}</div>
+        <div class="detail-links">${school.site ? sourceLink(school.site, "学校官网") : ""}${school.province === "江苏" ? sourceLink(sources.province, "江苏省教育厅院校名录") : sourceLink(sources.national, "教育部全国普通高校名单")}</div>
       </section>
       <section class="detail-section"><h3>公开学费${tuition ? ` · ${tuition.year} 年` : ""}</h3>
         ${tuition ? `
@@ -268,16 +276,15 @@
           ${tuition.note ? `<p>${esc(tuition.note)}</p>` : ""}
           <div class="detail-links">${sourceLink(tuition.source, tuition.title)}</div>
           ${tuition.majors?.length ? `<details><summary>查看已收录专业（${tuition.majors.length} 项）</summary><p>${tuition.majors.map(esc).join("、")}</p></details>` : ""}
-        ` : `<p>待查询。请核对学校招生网公布的收费公示、招生章程或招生计划。</p>
-          <div class="detail-links">${sourceLink(tuitionSearchUrl(school), "搜索该校公开学费")}</div>`}
+        ` : "<p>暂无信息</p>"}
       </section>
       <section class="detail-section"><h3>艺术与特长招生 · 2026 年</h3>
         ${admissions ? `<ul>${admissions}</ul>` : "<p>暂无已收录的艺体招生记录。完整招生项目请查学校当年简章。</p>"}
       </section>
-      <section class="detail-section"><h3>江苏历史招生批次</h3>
+      ${school.province === "江苏" ? `<section class="detail-section"><h3>江苏历史招生批次</h3>
         ${history ? `<p>2020 年普通类平行志愿投档记录</p><ul>${history}</ul>` : "<p>首版没有匹配到该校的 2020 年普通类一本或二本投档记录。</p>"}
         <div class="detail-links">${sourceLink(sources.current, "江苏 2026 年录取批次")}</div>
-      </section>`);
+      </section>` : ""}`);
   }
 
   function showMethod() {
@@ -289,8 +296,8 @@
     const admissionsSources = Object.values(sources.admissions ?? {})
       .map(source => sourceLink(source.url, source.label)).join("");
     openDialog("数据口径", "来源与覆盖范围", `
-      <section class="detail-section"><h3>江苏普通高校</h3>
-        <p>收录 ${schools.length} 所学校。学校名称、层次和标识码以教育部 2026 年 6 月名单为准，城市按省教育厅名录中的设区市归属，办学性质以省教育厅名录为准。大专对应高职（专科）层次。985 和 211 是历史建设项目标签。</p>
+      <section class="detail-section"><h3>五省普通高校</h3>
+        <p>收录 ${schools.length} 所学校，覆盖${provinces.join("、")}。基础信息取自教育部 2026 年 6 月名录。江苏部分学校的办学性质和城市归属取自江苏省教育厅名录。大专对应高职（专科）层次。985 和 211 是历史建设项目标签。</p>
         <div class="detail-links">${sourceLink(sources.province, "江苏省教育厅名录")}${sourceLink(sources.national, "教育部全国普通高校名单")}${sourceLink(sources.flag211, "211 工程名单")}${sourceLink(sources.flag985, "985 工程名单")}</div>
       </section>
       <section class="detail-section"><h3>历史一本、二本</h3>
@@ -302,7 +309,7 @@
         <p>有完整的指定范围招生计划时，以各专业年学费乘计划人数后求和，再除以总计划人数。估算值对应详情注明的生源省份、年份和招生类别。请按具体专业、入学年份和学校原文核对。</p>
       </section>
       <section class="detail-section"><h3>艺术与特长招生</h3>
-        <p>已收录 ${admissionsCount} 所有 2026 年公开记录的院校。艺术和体育统考依据江苏投档记录，校考、高水平运动队及体育单招依据各自的公开招生文件。高水平艺术团自 2024 年起改为在校生遴选。</p>
+        <p>已收录 ${admissionsCount} 所有 2026 年公开记录的院校。以已收录的投档表、学校招生章程及专项招生文件为准。投档表中的生源省份标在相应条目内。高水平艺术团自 2024 年起改为在校生遴选。</p>
         <div class="detail-links">${admissionsSources}</div>
       </section>`);
   }
@@ -328,23 +335,23 @@
 
   function exportCsv() {
     if (!results.length) return;
-    const header = ["学校", "学校标识码", "城市", "办学层次", "办学性质", "建设标签",
+    const header = ["学校", "学校标识码", "省份", "城市", "办学层次", "办学性质", "建设标签",
       "2026艺体招生", "艺体招生来源", "学费年份", "已收录学费下限（元/年）", "已收录学费上限（元/年）",
-      "均值（元/年）", "均值口径", "学费来源", "待查学费搜索链接", "学校官网"];
+      "均值（元/年）", "均值口径", "学费来源", "学费状态", "学校官网"];
     const records = results.map(school => {
       const fee = school.tuition;
       const bounds = feeBounds(school);
-      return [school.name, school.id, school.city, school.level, school.nature, school.flags.join("、"),
+      return [school.name, school.id, school.province, school.city, school.level, school.nature, school.flags.join("、"),
         (school.admissions ?? []).map(record => [record.label, ...record.items].join(" ")).join("；"),
         [...new Set((school.admissions ?? []).map(record => record.url))].join("；"), fee?.year, bounds?.min, bounds?.max,
         fee?.average?.value, fee?.average ? `${fee.average.type === "official" ? "官方均值" : "按招生计划估算"} · ${fee.average.scope}` : "",
-        fee?.source, fee ? "" : tuitionSearchUrl(school), school.site];
+        fee?.source, fee ? "已收录" : "暂无信息", school.site];
     });
     const content = [header, ...records].map(record => record.map(csvCell).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = view === "saved" ? "江苏院校收藏.csv" : "江苏院校筛选结果.csv";
+    anchor.download = view === "saved" ? "院校收藏.csv" : "院校筛选结果.csv";
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
@@ -355,19 +362,22 @@
   $("total-n").textContent = schools.length;
   $("undergrad-n").textContent = schools.filter(school => school.level === "本科").length;
   $("college-n").textContent = schools.filter(school => school.level === "专科").length;
-  $("footer-coverage").textContent = `江苏省 · 2026 年院校基础信息 · 学费已收录 ${schools.filter(school => school.tuition).length} 所`;
-  $("city").insertAdjacentHTML("beforeend", cities.map(city => `<option>${esc(city)}</option>`).join(""));
-  $("city-grid").innerHTML = cities.map(city => {
-    const count = schools.filter(school => school.city === city).length;
-    return `<button class="city-tile" data-city="${esc(city)}" aria-label="${esc(city)}，${count} 所院校" aria-pressed="false"><span>${esc(city.replace(/市$/, ""))}</span><span>${count}</span></button>`;
+  $("footer-coverage").textContent = `五省 · 2026 年院校基础信息 · 学费已收录 ${schools.filter(school => school.tuition).length} 所`;
+  $("province").append(...provinces.map(province => new Option(province, province)));
+  $("province-grid").innerHTML = provinces.map(province => {
+    const count = byProvince.get(province).length;
+    return `<button class="province-tile" data-province="${esc(province)}" aria-label="${esc(province)}，${count} 所院校" aria-pressed="false">
+      <span>${esc(province)}</span><strong>${count}</strong></button>`;
   }).join("");
+  updateCityOptions();
 
-  for (const id of filters) $(id).addEventListener(id === "search" ? "input" : "change", applyFilter);
+  for (const id of filters) {
+    $(id).addEventListener(id === "search" ? "input" : "change", () => {
+      if (id === "province") updateCityOptions();
+      applyFilter();
+    });
+  }
   $("reset").addEventListener("click", () => { resetFilters(); render(); });
-  $("fee-queue").addEventListener("click", () => {
-    $("price").value = $("price").value === "unknown" ? "" : "unknown";
-    applyFilter();
-  });
   $("export").addEventListener("click", exportCsv);
   $("close-dialog").addEventListener("click", () => $("dialog").close());
   $("dialog").addEventListener("click", event => {
@@ -390,9 +400,11 @@
       return;
     }
     if (data.preset) { preset = data.preset; applyFilter(); return; }
-    if (data.city) {
+    if (data.province) {
       if (view === "saved") { view = "all"; resetFilters(); }
-      $("city").value = $("city").value === data.city ? "" : data.city;
+      $("province").value = $("province").value === data.province ? "" : data.province;
+      $("city").value = "";
+      updateCityOptions();
       applyFilter();
       $("results-title").scrollIntoView({ block: "start" });
       return;
