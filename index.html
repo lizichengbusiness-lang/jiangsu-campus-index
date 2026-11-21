@@ -4,18 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="筛选江苏、广东、山东、山西和浙江的普通高校，查阅公开学费、招生专业和艺术与特长招生记录。">
-  <title>五省院校索引</title>
-  <link rel="stylesheet" href="styles.css?v=20261121">
-  <script defer src="schools.js?v=20261121"></script>
-  <script defer src="app.js?v=20261121"></script>
+  <meta name="description" content="筛选江苏、广东、山东、山西、浙江、湖北、河南、陕西、四川和上海的普通高校，查阅公开学费、招生专业和艺术与特长招生记录。">
+  <title>高校检索</title>
+  <link rel="stylesheet" href="styles.css?v=20261121-regions10">
+  <script defer src="schools.js?v=20261121-regions10"></script>
+  <script defer src="app.js?v=20261121-regions10"></script>
 </head>
 <body>
   <header class="masthead">
     <div class="masthead-inner">
-      <a class="brand" href="index.html" aria-label="五省院校索引首页">
+      <a class="brand" href="index.html" aria-label="高校检索首页">
         <span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span>五省院校索引</span>
+        <span>高校检索</span>
       </a>
       <nav aria-label="主导航">
         <button class="nav-link current" data-view="all" aria-pressed="true">院校检索</button>
@@ -29,7 +29,7 @@
       <div class="hero-main">
         <div class="edition"><span></span> 2026 年普通高校名录</div>
         <h1 id="page-title">找到你的目标院校</h1>
-        <p>按省份、城市、院校类型和公开学费筛选学校。</p>
+        <p>按省市、城市、院校类型和公开学费筛选学校。</p>
         <dl class="stats">
           <div><dt id="total-n">—</dt><dd>普通高校</dd></div>
           <div><dt id="undergrad-n">—</dt><dd>本科院校</dd></div>
@@ -37,14 +37,14 @@
         </dl>
       </div>
       <div class="hero-cities" aria-labelledby="province-title">
-        <div class="city-head"><h2 id="province-title">按省份找</h2><span>普通高校</span></div>
+        <div class="city-head"><h2 id="province-title">按省市找</h2><span>普通高校</span></div>
         <div class="province-grid" id="province-grid"></div>
       </div>
     </section>
 
     <section class="directory" aria-labelledby="results-title">
       <div class="section-heading">
-        <div><h2 id="results-title">院校检索</h2><p id="results-subtitle">筛选江苏、广东、山东、山西和浙江的普通高校与已收录的公开招生数据。</p></div>
+        <div><h2 id="results-title">院校检索</h2><p id="results-subtitle">筛选江苏、广东、山东、山西、浙江、湖北、河南、陕西、四川和上海的普通高校与已收录的公开招生数据。</p></div>
         <button class="button secondary export" id="export"><span class="download-icon" aria-hidden="true"></span> 导出 CSV</button>
       </div>
 
@@ -65,16 +65,17 @@
           <button data-preset="private2" aria-pressed="false">江苏民办二本 <small>历史</small></button>
         </div>
         <div class="select-grid">
-          <label>省份<select id="province"><option value="">全部五省</option></select></label>
+          <label>省市<select id="province"><option value="">全部省市</option></select></label>
           <label>城市<select id="city"><option value="">全部城市</option></select></label>
           <label>办学层次<select id="level"><option value="">全部层次</option><option>本科</option><option>专科</option></select></label>
           <label>办学性质<select id="nature"><option value="">全部性质</option><option>公办</option><option>民办</option><option>中外合作办学</option></select></label>
           <label>艺术与特长招生<select id="admission"><option value="">不限招生方向</option><option value="any">有艺体招生记录</option><option value="art">艺术类</option><option value="sport">体育类（统考）</option><option value="team">高水平运动队</option><option value="single">体育单招</option></select></label>
           <label>学费参考档<select id="price"><option value="">不限学费</option><option value="known">已收录收费</option><option value="low">低于 1 万元/年</option><option value="mid">1 万–2 万元/年</option><option value="high">2 万–3 万元/年</option><option value="premium">3 万元/年及以上</option></select></label>
         </div>
+        <div id="key-city-links" class="key-city-links" role="group" aria-label="本省市重点城市" hidden></div>
       </div>
 
-      <div class="notice"><span class="info-icon" aria-hidden="true">i</span><span>学费按已收录档位筛选。艺体招生条目附有年份和公开来源。</span><button data-method>查看口径</button></div>
+      <div class="notice"><span class="info-icon" aria-hidden="true">i</span><span>★ 表示本省市的重点城市。公开学费和艺体招生的来源可在院校详情中查看。</span><button data-method>查看口径</button></div>
       <div class="result-header">
         <div id="result-count" aria-live="polite"></div>
         <label class="sort-label" for="sort">排序 <select id="sort"><option value="official">名录顺序</option><option value="fee-up">学费起点从低到高</option><option value="fee-down">学费起点从高到低</option><option value="name">校名拼音</option></select></label>
@@ -88,7 +89,7 @@
         <div class="page-bar" id="pagination"></div>
       </div>
     </section>
-    <footer><span>五省院校索引</span><span id="footer-coverage"></span><button data-method>数据来源与口径</button></footer>
+    <footer><span>高校检索</span><span id="footer-coverage"></span><button data-method>数据来源与口径</button></footer>
   </main>
   <dialog id="dialog" aria-labelledby="dialog-title">
     <div class="dialog-top"><div id="dialog-kicker"></div><button id="close-dialog" type="button" aria-label="关闭">×</button></div>

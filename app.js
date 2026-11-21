@@ -1,11 +1,19 @@
 (() => {
   "use strict";
 
-  const { schools, sources } = window.directoryData;
+  const { schools, sources, keyCities } = window.directoryData;
   const byId = new Map(schools.map(school => [school.id, school]));
   const provinces = [...new Set(schools.map(school => school.province))];
   const byProvince = new Map(provinces.map(province =>
     [province, schools.filter(school => school.province === province)]));
+  const starredCities = new Set(Object.values(keyCities).flat());
+  function locationText(school) {
+    const { city, province } = school;
+    if (!city) return province;
+    const marker = starredCities.has(city) ? "★ " : "";
+    return city === province + "市" ? marker + city : province + " · " + marker + city;
+  }
+
   const number = new Intl.NumberFormat("zh-CN");
   const names = new Intl.Collator("zh-Hans-CN-u-co-pinyin");
   const storageKey = "jiangsu-campus-saved-v1";
@@ -163,7 +171,7 @@
     const action = isSaved ? "取消收藏" : "收藏";
     const name = esc(school.name);
     const admissions = renderAdmissionTags(school);
-    const location = esc([school.province, school.city].filter(Boolean).join(" · "));
+    const location = esc(locationText(school));
     return `<tr>
       <td><button class="school-name" data-school="${school.id}">${name}</button>
       <span class="school-code"><span class="mobile-city">${location} · </span>${school.id}</span></td>
@@ -211,7 +219,7 @@
     $("export").disabled = !results.length;
     $("saved-badge").textContent = saved.size;
     $("results-title").textContent = view === "saved" ? "我的收藏" : "院校检索";
-    $("results-subtitle").textContent = view === "saved" ? "收藏保存在当前浏览器，可导出筛选后的名单。" : "筛选五省普通高校与已收录的公开招生数据。";
+    $("results-subtitle").textContent = view === "saved" ? "收藏保存在当前浏览器，可导出筛选后的名单。" : "筛选十省市普通高校与已收录的公开招生数据。";
     document.querySelectorAll(".nav-link").forEach(button => {
       const selected = view === button.dataset.view;
       button.classList.toggle("current", selected);
@@ -219,6 +227,8 @@
     });
     document.querySelectorAll("[data-preset]").forEach(button => button.setAttribute("aria-pressed", preset === button.dataset.preset));
     document.querySelectorAll("[data-province]").forEach(button => button.setAttribute("aria-pressed", $("province").value === button.dataset.province));
+    document.querySelectorAll("[data-key-city]").forEach(button =>
+      button.setAttribute("aria-pressed", button.dataset.keyCity === $("city").value));
     renderPagination(pageCount);
   }
 
@@ -232,11 +242,19 @@
   function updateCityOptions() {
     const province = $("province").value;
     const cities = [...new Set((byProvince.get(province) ?? schools).map(school => school.city).filter(Boolean))];
-    cities.sort(names.compare);
+    const priority = keyCities[province] ?? [];
+    const order = new Map(priority.map((name, index) => [name, index]));
+    const rank = name => order.get(name) ?? (starredCities.has(name) ? priority.length : priority.length + 1);
+    cities.sort((a, b) => rank(a) - rank(b) || names.compare(a, b));
     const city = $("city");
     const selected = city.value;
-    city.replaceChildren(new Option("全部城市", ""), ...cities.map(name => new Option(name, name)));
+    city.replaceChildren(new Option("全部城市", ""), ...cities.map(name => new Option(starredCities.has(name) ? "★ " + name : name, name)));
     if (cities.includes(selected)) city.value = selected;
+    const links = $("key-city-links");
+    links.hidden = !priority.length;
+    links.innerHTML = priority.length ? '<span>重点城市</span>' + priority.map(name =>
+      `<button type="button" data-key-city="${esc(name)}" aria-pressed="false"><span aria-hidden="true">★</span> ${esc(name)}</button>`
+    ).join("") : "";
   }
 
   function applyFilter() {
@@ -263,7 +281,7 @@
     const feeRows = tuition?.fees.map(fee => `<div class="detail-fee"><span>${esc(fee.label)}${fee.special ? " · 专项" : ""}</span><strong>${formatRange(fee.min, fee.max)} 元/年</strong></div>`).join("");
     const admissions = (school.admissions ?? []).map(record =>
       `<li><strong>${esc(record.label)}</strong>${record.items.length ? ` · ${record.items.map(esc).join("、")}` : ""} · ${sourceLink(record.url, "查看来源")}</li>`).join("");
-    openDialog([school.province, school.city].filter(Boolean).join(" · "), school.name, `
+    openDialog(locationText(school), school.name, `
       <div class="tags">${tags(school)}</div>
       <section class="detail-section"><h3>院校信息</h3>
         <p>学校标识码 ${school.id} · 主管部门 ${esc(school.agency)}</p>
@@ -296,8 +314,9 @@
     const admissionsSources = Object.values(sources.admissions ?? {})
       .map(source => sourceLink(source.url, source.label)).join("");
     openDialog("数据口径", "来源与覆盖范围", `
-      <section class="detail-section"><h3>五省普通高校</h3>
+      <section class="detail-section"><h3>十省市普通高校</h3>
         <p>收录 ${schools.length} 所学校，覆盖${provinces.join("、")}。基础信息取自教育部 2026 年 6 月名录。江苏部分学校的办学性质和城市归属取自江苏省教育厅名录。大专对应高职（专科）层次。985 和 211 是历史建设项目标签。</p>
+        <p>★ 标出各省的省会、计划单列市，再按民办本科与高职（专科）院校合计数量补足至三城。数量相同时，优先选择普通高校总数更多的城市。上海按直辖市单列。</p>
         <div class="detail-links">${sourceLink(sources.province, "江苏省教育厅名录")}${sourceLink(sources.national, "教育部全国普通高校名单")}${sourceLink(sources.flag211, "211 工程名单")}${sourceLink(sources.flag985, "985 工程名单")}</div>
       </section>
       <section class="detail-section"><h3>历史一本、二本</h3>
@@ -337,7 +356,7 @@
     if (!results.length) return;
     const header = ["学校", "学校标识码", "省份", "城市", "办学层次", "办学性质", "建设标签",
       "2026艺体招生", "艺体招生来源", "学费年份", "已收录学费下限（元/年）", "已收录学费上限（元/年）",
-      "均值（元/年）", "均值口径", "学费来源", "学费状态", "学校官网"];
+      "均值（元/年）", "均值口径", "学费来源", "学费状态", "学校官网", "重点城市"];
     const records = results.map(school => {
       const fee = school.tuition;
       const bounds = feeBounds(school);
@@ -345,7 +364,7 @@
         (school.admissions ?? []).map(record => [record.label, ...record.items].join(" ")).join("；"),
         [...new Set((school.admissions ?? []).map(record => record.url))].join("；"), fee?.year, bounds?.min, bounds?.max,
         fee?.average?.value, fee?.average ? `${fee.average.type === "official" ? "官方均值" : "按招生计划估算"} · ${fee.average.scope}` : "",
-        fee?.source, fee ? "已收录" : "暂无信息", school.site];
+        fee?.source, fee ? "已收录" : "暂无信息", school.site, starredCities.has(school.city) ? "★" : ""];
     });
     const content = [header, ...records].map(record => record.map(csvCell).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" }));
@@ -362,7 +381,7 @@
   $("total-n").textContent = schools.length;
   $("undergrad-n").textContent = schools.filter(school => school.level === "本科").length;
   $("college-n").textContent = schools.filter(school => school.level === "专科").length;
-  $("footer-coverage").textContent = `五省 · 2026 年院校基础信息 · 学费已收录 ${schools.filter(school => school.tuition).length} 所`;
+  $("footer-coverage").textContent = `十省市 · 2026 年院校基础信息 · 学费已收录 ${schools.filter(school => school.tuition).length} 所`;
   $("province").append(...provinces.map(province => new Option(province, province)));
   $("province-grid").innerHTML = provinces.map(province => {
     const count = byProvince.get(province).length;
@@ -407,6 +426,11 @@
       updateCityOptions();
       applyFilter();
       $("results-title").scrollIntoView({ block: "start" });
+      return;
+    }
+    if (data.keyCity) {
+      $("city").value = $("city").value === data.keyCity ? "" : data.keyCity;
+      applyFilter();
       return;
     }
     if (data.page) {
